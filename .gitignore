@@ -1,1 +1,5 @@
 /target
+*.jpeg
+*.png
+images/
+*.jpg
