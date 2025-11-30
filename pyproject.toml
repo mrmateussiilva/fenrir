@@ -1,0 +1,18 @@
+[build-system]
+requires = ["maturin>=1.4"]
+build-backend = "maturin"
+
+[project]
+name = "fenrir"
+version = "0.1.9"
+description = "Fenrir – Rust-powered imaging engine for huge files (TIFF, PSD, BigTIFF)"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+  { name = "Mateus Silva" }
+]
+license = "MIT"
+keywords = ["image", "rust", "tiff", "psd", "engine"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
