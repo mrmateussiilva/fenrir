@@ -11,10 +11,23 @@ use std::{env, path::Path, process::Command};
 use tempfile::Builder;
 
 #[pyclass]
+#[derive(Clone)]
 pub struct FenrirImage {
     width: u32,
     height: u32,
     buffer: DynamicImage,
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct FenrirTile {
+    image: FenrirImage,
+    tile_x: u32,
+    tile_y: u32,
+    tile_width: u32,
+    tile_height: u32,
+    original_width: u32,
+    original_height: u32,
 }
 
 enum ImageBufferMut<'a> {
@@ -118,12 +131,235 @@ impl FenrirImage {
             .ok_or_else(|| PyValueError::new_err("Rectangle height overflow"))?;
 
         if max_x > self.width || max_y > self.height {
-            return Err(PyValueError::new_err(
-                "Rectangle exceeds image dimensions",
-            ));
+            return Err(PyValueError::new_err("Rectangle exceeds image dimensions"));
         }
 
         Ok(())
+    }
+}
+
+#[pyfunction]
+pub fn load_tile(
+    path: &str,
+    tile_x: u32,
+    tile_y: u32,
+    tile_width: u32,
+    tile_height: u32,
+) -> PyResult<FenrirTile> {
+    if tile_width == 0 || tile_height == 0 {
+        return Err(PyValueError::new_err(
+            "Tile dimensions must be greater than zero",
+        ));
+    }
+
+    let img =
+        image::open(path).map_err(|e| PyIOError::new_err(format!("Erro abrindo imagem: {}", e)))?;
+
+    let (img_width, img_height) = img.dimensions();
+
+    let start_x = tile_x * tile_width;
+    let start_y = tile_y * tile_height;
+
+    if start_x >= img_width || start_y >= img_height {
+        return Err(PyValueError::new_err("Tile position outside image bounds"));
+    }
+
+    let actual_width = tile_width.min(img_width - start_x);
+    let actual_height = tile_height.min(img_height - start_y);
+
+    let cropped = img.crop_imm(start_x, start_y, actual_width, actual_height);
+    let tile_img = FenrirImage::from_dynamic(cropped);
+
+    Ok(FenrirTile {
+        image: tile_img,
+        tile_x,
+        tile_y,
+        tile_width: actual_width,
+        tile_height: actual_height,
+        original_width: img_width,
+        original_height: img_height,
+    })
+}
+
+#[pyfunction]
+pub fn assemble(py: Python, tiles_obj: &PyAny) -> PyResult<FenrirImage> {
+    let tiles: Vec<(u32, u32, FenrirTile)> = tiles_obj.extract()?;
+
+    if tiles.is_empty() {
+        return Err(PyValueError::new_err("No tiles provided"));
+    }
+
+    let mut max_col = 0u32;
+    let mut max_row = 0u32;
+    let mut tile_width = 0u32;
+    let mut tile_height = 0u32;
+
+    for (col, row, tile) in &tiles {
+        max_col = max_col.max(*col);
+        max_row = max_row.max(*row);
+        if tile_width == 0 {
+            tile_width = tile.tile_width;
+            tile_height = tile.tile_height;
+        }
+    }
+
+    let cols = max_col + 1;
+    let rows = max_row + 1;
+    let total_width = cols * tile_width;
+    let total_height = rows * tile_height;
+
+    let mut result = FenrirImage::new(total_width, total_height, "RGBA", (0, 0, 0, 0))?;
+
+    for (col, row, tile) in tiles {
+        let start_x = col * tile.tile_width;
+        let start_y = row * tile.tile_height;
+
+        let tile_img = &tile.image;
+
+        for y in 0..tile.tile_height {
+            for x in 0..tile.tile_width {
+                let pixel = tile_img.get_pixel(x, y)?;
+                result.draw_pixel(start_x + x, start_y + y, pixel)?;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+#[pymethods]
+impl FenrirTile {
+    /// Cria um novo tile.
+    #[new]
+    pub fn new(
+        image: FenrirImage,
+        tile_x: u32,
+        tile_y: u32,
+        tile_width: u32,
+        tile_height: u32,
+        original_width: u32,
+        original_height: u32,
+    ) -> Self {
+        Self {
+            image,
+            tile_x,
+            tile_y,
+            tile_width,
+            tile_height,
+            original_width,
+            original_height,
+        }
+    }
+
+    /// Retorna tile_x
+    pub fn tile_x(&self) -> u32 {
+        self.tile_x
+    }
+
+    /// Retorna tile_y
+    pub fn tile_y(&self) -> u32 {
+        self.tile_y
+    }
+
+    /// Retorna tile_width
+    pub fn tile_width(&self) -> u32 {
+        self.tile_width
+    }
+
+    /// Retorna tile_height
+    pub fn tile_height(&self) -> u32 {
+        self.tile_height
+    }
+
+    /// Retorna dimensões do tile.
+    pub fn get_size(&self) -> (u32, u32, u32, u32) {
+        (self.tile_x, self.tile_y, self.tile_width, self.tile_height)
+    }
+
+    /// Retorna dimensões da imagem original.
+    pub fn get_original_size(&self) -> (u32, u32) {
+        (self.original_width, self.original_height)
+    }
+
+    /// Retorna a imagem do tile.
+    pub fn get_image<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, FenrirImage>> {
+        Py::new(py, self.image.clone()).map(|p| p.into_bound(py))
+    }
+
+    /// Salva o tile em disco.
+    pub fn save(&self, path: &str) -> PyResult<()> {
+        self.image.save(path)
+    }
+
+    /// Posição absoluta do tile na imagem original.
+    pub fn get_absolute_position(&self) -> (u32, u32) {
+        (
+            self.tile_x * self.tile_width,
+            self.tile_y * self.tile_height,
+        )
+    }
+
+    /// Aplica uma operação no tile e retorna novo tile processado.
+    pub fn apply(&self, py: Python, operation: &str, params: Vec<f64>) -> PyResult<Py<FenrirTile>> {
+        let mut new_image = self.image.duplicate();
+
+        match operation {
+            "invert" => {
+                let (w, h) = new_image.get_size();
+                for y in 0..h {
+                    for x in 0..w {
+                        let (r, g, b, a) = new_image.get_pixel(x, y)?;
+                        new_image.draw_pixel(x, y, (255 - r, 255 - g, 255 - b, a))?;
+                    }
+                }
+            }
+            "brightness" => {
+                if params.is_empty() {
+                    return Err(PyValueError::new_err(
+                        "Brightness requires a factor parameter",
+                    ));
+                }
+                let factor = params[0] as f32;
+                let (w, h) = new_image.get_size();
+                for y in 0..h {
+                    for x in 0..w {
+                        let (r, g, b, a) = new_image.get_pixel(x, y)?;
+                        let r = ((r as f32) * factor).clamp(0.0, 255.0) as u8;
+                        let g = ((g as f32) * factor).clamp(0.0, 255.0) as u8;
+                        let b = ((b as f32) * factor).clamp(0.0, 255.0) as u8;
+                        new_image.draw_pixel(x, y, (r, g, b, a))?;
+                    }
+                }
+            }
+            "grayscale" => {
+                let (w, h) = new_image.get_size();
+                for y in 0..h {
+                    for x in 0..w {
+                        let (r, g, b, a) = new_image.get_pixel(x, y)?;
+                        let gray = luma_from_rgba((r, g, b, a));
+                        new_image.draw_pixel(x, y, (gray, gray, gray, a))?;
+                    }
+                }
+            }
+            _ => {
+                return Err(PyValueError::new_err(
+                    "Unknown operation. Supported: invert, brightness, grayscale",
+                ));
+            }
+        }
+
+        Py::new(
+            py,
+            FenrirTile {
+                image: new_image,
+                tile_x: self.tile_x,
+                tile_y: self.tile_y,
+                tile_width: self.tile_width,
+                tile_height: self.tile_height,
+                original_width: self.original_width,
+                original_height: self.original_height,
+            },
+        )
     }
 }
 
@@ -167,11 +403,7 @@ impl FenrirImage {
                 let pixel = Luma([value]);
                 DynamicImage::ImageLuma8(ImageBuffer::from_pixel(width, height, pixel))
             }
-            _ => {
-                return Err(PyValueError::new_err(
-                    "Mode must be one of: RGB, RGBA ou L",
-                ))
-            }
+            _ => return Err(PyValueError::new_err("Mode must be one of: RGB, RGBA ou L")),
         };
 
         Ok(Self {
@@ -248,9 +480,9 @@ impl FenrirImage {
                 "Resize dimensions must be greater than zero",
             ));
         }
-        let resized =
-            self.buffer
-                .resize(w, h, image::imageops::FilterType::Lanczos3);
+        let resized = self
+            .buffer
+            .resize(w, h, image::imageops::FilterType::Lanczos3);
 
         let normalized = FenrirImage::normalize_dynamic(resized);
         self.width = w;
@@ -559,9 +791,9 @@ impl FenrirImage {
             .save(temp_file.path())
             .map_err(|e| PyIOError::new_err(format!("Erro salvando imagem temporária: {}", e)))?;
 
-        let (_, path) = temp_file
-            .keep()
-            .map_err(|e| PyIOError::new_err(format!("Erro preservando arquivo temporário: {}", e)))?;
+        let (_, path) = temp_file.keep().map_err(|e| {
+            PyIOError::new_err(format!("Erro preservando arquivo temporário: {}", e))
+        })?;
 
         launch_viewer(&path)
     }
@@ -583,26 +815,81 @@ impl FenrirImage {
         }
 
         let gray = self.buffer.to_luma8();
-        let resized = imageops::resize(
-            &gray,
-            width,
-            target_height,
-            imageops::FilterType::Nearest,
-        );
+        let resized = imageops::resize(&gray, width, target_height, imageops::FilterType::Nearest);
 
         let mut output = String::with_capacity(((width + 1) * target_height) as usize);
         for y in 0..target_height {
             for x in 0..width {
                 let pixel = resized.get_pixel(x, y);
                 let value = pixel[0];
-                let gradient_index =
-                    (value as usize * (ASCII_GRADIENT.len() - 1)) / 255;
+                let gradient_index = (value as usize * (ASCII_GRADIENT.len() - 1)) / 255;
                 output.push(ASCII_GRADIENT[gradient_index]);
             }
             output.push('\n');
         }
 
         Ok(output)
+    }
+
+    /// Divide a imagem em tiles de tamanho especificado.
+    /// Retorna lista de tiles (coluna, linha, tile).
+    pub fn tile(&self, tile_width: u32, tile_height: u32) -> PyResult<Vec<(u32, u32, FenrirTile)>> {
+        if tile_width == 0 || tile_height == 0 {
+            return Err(PyValueError::new_err(
+                "Tile dimensions must be greater than zero",
+            ));
+        }
+
+        let mut tiles = Vec::new();
+        let mut y = 0u32;
+        let mut row = 0u32;
+
+        while y < self.height {
+            let h = (tile_height).min(self.height - y);
+            let mut x = 0u32;
+            let mut col = 0u32;
+
+            while x < self.width {
+                let w = (tile_width).min(self.width - x);
+
+                let cropped = self.buffer.crop_imm(x, y, w, h);
+                let tile_img = FenrirImage::from_dynamic(cropped);
+
+                let tile = FenrirTile {
+                    image: tile_img,
+                    tile_x: col,
+                    tile_y: row,
+                    tile_width: w,
+                    tile_height: h,
+                    original_width: self.width,
+                    original_height: self.height,
+                };
+
+                tiles.push((col, row, tile));
+
+                x += tile_width;
+                col += 1;
+            }
+
+            y += tile_height;
+            row += 1;
+        }
+
+        Ok(tiles)
+    }
+
+    /// Retorna o número de tiles que a imagem terá com o tamanho especificado.
+    pub fn tile_count(&self, tile_width: u32, tile_height: u32) -> PyResult<(u32, u32)> {
+        if tile_width == 0 || tile_height == 0 {
+            return Err(PyValueError::new_err(
+                "Tile dimensions must be greater than zero",
+            ));
+        }
+
+        let cols = (self.width + tile_width - 1) / tile_width;
+        let rows = (self.height + tile_height - 1) / tile_height;
+
+        Ok((cols, rows))
     }
 
     /// Abre o viewer interativo estilo Photoshop.

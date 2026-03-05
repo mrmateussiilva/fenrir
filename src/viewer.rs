@@ -3,12 +3,12 @@ use eframe::{
     egui::{self, Color32, ColorImage, TextureOptions, Vec2},
     App, CreationContext, Frame, NativeOptions,
 };
+use pyo3::PyResult;
 use std::{
     env,
     sync::{Arc, Mutex},
     thread,
 };
-use pyo3::PyResult;
 
 pub fn show_image(image: FenrirImage) {
     if env::var("FENRIR_DISABLE_VIEWER")
@@ -29,12 +29,7 @@ pub fn show_image(image: FenrirImage) {
                 let _ = eframe::run_native(
                     "Fenrir Viewer",
                     options,
-                    Box::new(move |cc| {
-                        Ok(Box::new(FenrirViewerApp::new(
-                            cc,
-                            Arc::clone(&shared),
-                        )))
-                    }),
+                    Box::new(move |cc| Ok(Box::new(FenrirViewerApp::new(cc, Arc::clone(&shared))))),
                 );
             }
         });
@@ -93,7 +88,9 @@ struct FenrirViewerApp {
 impl FenrirViewerApp {
     fn new(cc: &CreationContext<'_>, shared: Arc<Mutex<FenrirImage>>) -> Self {
         let (color_image, size) = snapshot_color_image(&shared);
-        let texture = cc.egui_ctx.load_texture("fenrir-image", color_image, TextureOptions::LINEAR);
+        let texture = cc
+            .egui_ctx
+            .load_texture("fenrir-image", color_image, TextureOptions::LINEAR);
 
         Self {
             texture,
@@ -249,7 +246,9 @@ impl FenrirViewerApp {
                 Ok(total)
             })();
             match parsed {
-                Ok(total) => self.set_status_ok(format!("Split gerou {total} partes (mostrando a primeira)")),
+                Ok(total) => {
+                    self.set_status_ok(format!("Split gerou {total} partes (mostrando a primeira)"))
+                }
                 Err(err) => self.set_status_err(err),
             }
         }
@@ -461,8 +460,7 @@ impl App for FenrirViewerApp {
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let (response, painter) =
-                ui.allocate_painter(ui.available_size(), egui::Sense::drag());
+            let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::drag());
 
             if response.dragged() {
                 self.offset += response.drag_delta();
@@ -488,7 +486,13 @@ impl App for FenrirViewerApp {
                 Color32::WHITE,
             );
 
-            let fps = ui.input(|i| if i.stable_dt > 0.0 { 1.0 / i.stable_dt } else { 0.0 });
+            let fps = ui.input(|i| {
+                if i.stable_dt > 0.0 {
+                    1.0 / i.stable_dt
+                } else {
+                    0.0
+                }
+            });
             let overlay = format!("Zoom: {:>4.0}% | FPS: {:>4.0}", self.zoom * 100.0, fps);
             painter.text(
                 response.rect.left_top() + egui::vec2(8.0, 8.0),

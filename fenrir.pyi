@@ -4,7 +4,6 @@
 
 from typing import List, Tuple
 
-
 class FenrirImage:
     """
     FenrirImage representa uma imagem carregada na memória.
@@ -23,7 +22,9 @@ class FenrirImage:
     height: int
 
     @staticmethod
-    def new(width: int, height: int, mode: str, color: Tuple[int, int, int, int]) -> "FenrirImage":
+    def new(
+        width: int, height: int, mode: str, color: Tuple[int, int, int, int]
+    ) -> "FenrirImage":
         """
         Cria uma nova imagem preenchida com a cor desejada.
 
@@ -235,5 +236,88 @@ class FenrirImage:
         """
         Abre uma janela estilo Photoshop exibindo a imagem com zoom/pan
         e uma barra lateral de ferramentas para pré-visualização.
+        """
+        ...
+
+    def tile(
+        self, tile_width: int, tile_height: int
+    ) -> List[Tuple[int, int, "FenrirTile"]]:
+        """
+        Divide a imagem em tiles de tamanho especificado.
+
+        Args:
+            tile_width: Largura de cada tile.
+            tile_height: Altura de cada tile.
+
+        Returns:
+            Lista de tuplas (col, row, tile).
+        """
+        ...
+
+    def tile_count(self, tile_width: int, tile_height: int) -> Tuple[int, int]:
+        """
+        Retorna o número de colunas e linhas de tiles.
+        """
+        ...
+
+def load_tile(
+    path: str, tile_x: int, tile_y: int, tile_width: int, tile_height: int
+) -> "FenrirTile":
+    """
+    Carrega apenas um tile específico da imagem (sem carregar a imagem inteira).
+    Útil para imagens muito grandes.
+    """
+    ...
+
+def assemble(tiles: List[Tuple[int, int, "FenrirTile"]]) -> "FenrirImage":
+    """
+    Monta uma imagem a partir de tiles.
+    """
+    ...
+
+class FenrirTile:
+    """
+    Representa um tile (parte) de uma imagem maior.
+    Útil para processar imagens grandes em partes.
+    """
+
+    def get_size(self) -> Tuple[int, int, int, int]:
+        """
+        Retorna (tile_x, tile_y, tile_width, tile_height).
+        """
+        ...
+
+    def get_original_size(self) -> Tuple[int, int]:
+        """
+        Retorna dimensões da imagem original.
+        """
+        ...
+
+    def get_image(self) -> FenrirImage:
+        """
+        Retorna a imagem do tile.
+        """
+        ...
+
+    def save(self, path: str) -> None:
+        """
+        Salva o tile em disco.
+        """
+        ...
+
+    def get_absolute_position(self) -> Tuple[int, int]:
+        """
+        Posição absoluta do tile na imagem original.
+        """
+        ...
+
+    def apply(self, operation: str, params: List[float]) -> "FenrirTile":
+        """
+        Aplica uma operação no tile.
+
+        Operações disponíveis:
+        - "invert": Inverte as cores
+        - "brightness": Ajusta brilho (factor 0.0-2.0)
+        - "grayscale": Converte para tons de cinza
         """
         ...
