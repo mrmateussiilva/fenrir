@@ -84,7 +84,38 @@ Stub de tipagem com documentação completa:
 
 ---
 
-### 4. Build System
+### 4. Suporte TIFF - `src/tiff.rs`
+
+| Classe | Descrição |
+|--------|-----------|
+| `FenrirTiff` | Leitor de arquivos TIFF |
+| `FenrirTiffWriter` | Escritor de arquivos TIFF |
+
+#### FenrirTiff Métodos:
+
+| Método | Descrição |
+|--------|-----------|
+| `new(path)` | Abre arquivo TIFF |
+| `get_size()` | Retorna (largura, altura) |
+| `get_page_count()` | Retorna número de páginas |
+| `is_big_tiff()` | Verifica se é BigTIFF |
+| `set_page(page)` | Seleciona página |
+| `to_fenrir_image()` | Converte para FenrirImage |
+| `load_region(x, y, w, h)` | Carrega região específica |
+
+#### FenrirTiffWriter Métodos:
+
+| Método | Descrição |
+|--------|-----------|
+| `new(path, width, height)` | Cria novo TIFF |
+| `set_pixel(x, y, color)` | Define pixel |
+| `fill(color)` | Preenche imagem |
+| `save()` | Salva em disco |
+| `get_size()` | Retorna dimensões |
+
+---
+
+### 5. Build System
 
 | Arquivo | Descrição |
 |---------|-----------|
@@ -95,6 +126,7 @@ Stub de tipagem com documentação completa:
 **Dependências Rust:**
 - `pyo3` 0.21 - bindings Python
 - `image` 0.24 - processamento de imagens
+- `tiff` 0.9 - suporte a TIFF
 - `tempfile` 3 - arquivos temporários
 - `egui` 0.28 / `eframe` 0.28 - UI
 - `winit` 0.29 - windowing
@@ -119,7 +151,7 @@ Stub de tipagem com documentação completa:
 | # | Item | Descrição |
 |---|------|-----------|
 | ~~1~~ | ~~Tile-based Processing~~ | ✅ **IMPLEMENTADO** |
-| 2 | **Suporte TIFF/BigTIFF** | O README menciona arquivos gigantes, mas ainda não implementado |
+| 2 | ~~**Suporte TIFF/BigTIFF**~~ | ✅ **IMPLEMENTADO** |
 | 3 | **Suporte PSD** | Formato Photoshop multi-camadas |
 | 4 | **NumPy Integration** | Retornar arrays NumPy diretamente |
 

@@ -52,7 +52,7 @@ impl FenrirImage {
         }
     }
 
-    fn from_dynamic(image: DynamicImage) -> Self {
+    pub fn from_dynamic(image: DynamicImage) -> Self {
         let normalized = FenrirImage::normalize_dynamic(image);
         let (width, height) = normalized.dimensions();
         Self {
